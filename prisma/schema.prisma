@@ -1,0 +1,124 @@
+// EstudaAí - Gerenciador de Tarefas Acadêmico
+// Prisma schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Usuários (login com e-mail + senha)
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  subjects  Subject[]
+  tasks     Task[]
+  links     Link[]
+  cloud     CloudConnection[]
+  sessions  StudySession[]
+  notes     Note[]
+}
+
+// Disciplinas / Cursos do estudante
+model Subject {
+  id          String   @id @default(cuid())
+  name        String
+  code        String?
+  color       String   @default("#10b981")
+  professor   String?
+  description String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tasks    Task[]
+  links    Link[]
+  notes    Note[]
+  sessions StudySession[]
+}
+
+// Tarefas / Atividades agendadas por dia e horário
+model Task {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  date        String
+  startTime   String?
+  endTime     String?
+  priority    String   @default("media")
+  status      String   @default("pendente")
+  type        String   @default("atividade")
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Links salvos (biblioteca de recursos)
+model Link {
+  id          String   @id @default(cuid())
+  title       String
+  url         String
+  description String?
+  category    String   @default("geral")
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Conexões com serviços de nuvem (Google Drive, OneDrive)
+model CloudConnection {
+  id           String   @id @default(cuid())
+  provider     String
+  accountName  String
+  folderName   String
+  folderUrl    String
+  accessToken  String?
+  connected    Boolean  @default(true)
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Sessões de estudo (registradas via Pomodoro ou manual)
+model StudySession {
+  id          String   @id @default(cuid())
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  duration    Int
+  date        String
+  type        String   @default("pomodoro")
+  notes       String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+}
+
+// Notas / Anotações por disciplina
+model Note {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @default("")
+  subjectId   String?
+  subject     Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pinned      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

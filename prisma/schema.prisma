@@ -48,19 +48,21 @@ model Subject {
 
 // Tarefas / Atividades agendadas por dia e horário
 model Task {
-  id          String   @id @default(cuid())
-  title       String
-  description String?
-  date        String
-  startTime   String?
-  endTime     String?
-  priority    String   @default("media")
-  status      String   @default("pendente")
-  type        String   @default("atividade")
-  subjectId   String?
-  subject     Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                String   @id @default(cuid())
+  title             String
+  description       String?
+  date              String
+  startTime         String?
+  endTime           String?
+  priority          String   @default("media")
+  status            String   @default("pendente")
+  type              String   @default("atividade")
+  subjectId         String?
+  subject           Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  userId            String?
+  recurrence        String   @default("none") // none|daily|weekly|monthly|yearly
+  recurrenceEndDate String?
+  user              User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

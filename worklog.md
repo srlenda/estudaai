@@ -382,3 +382,69 @@ Stage Summary:
 - Não foram tocados: src/app/api/setup/route.ts, src/app/api/auth/*, src/lib/auth.ts, src/lib/db.ts.
 - Todos os 14 arquivos agora usam `createClient` de `@libsql/client` diretamente (sem Prisma), seguindo o mesmo pattern de /api/setup e /api/auth/register — compatível com Vercel serverless.
 - Response shapes e status codes preservados (200/201/400/401/404/500). Booleans SQLite (connected, pinned) convertidos em ambas as direções. Datas tratadas como ISO string. Nenhuma query SQL concatena input do usuário (tudo parametrizado com `args`).
+
+---
+Task ID: R6-FIX
+Agent: main (orchestrator)
+Task: Corrigir erro 'Erro ao criar conta' na Vercel — Prisma não funciona em serverless
+
+Work Log:
+- Diagnóstico (VLM na captura do usuário): tela de login aparece, mas POST /api/auth/register retorna 500 "Erro ao criar conta".
+- Causa raiz: Prisma com require()-based adapter não funciona no ambiente serverless da Vercel (mesmo bug do /api/setup que já tínhamos resolvido com libSQL direto).
+- Correção: reescrever TODAS as rotas para usar @libsql/client createClient() diretamente (sem Prisma):
+  - src/lib/db.ts: imports estáticos (Prisma ainda disponível para dev local file:)
+  - src/lib/auth.ts: authorize() usa libSQL direto (SELECT user, bcrypt.compare)
+  - /api/auth/register: INSERT via libSQL direto + retorna erro real (não genérico)
+  - [Subagente R6] 14 API routes reescritas: subjects, tasks, links, cloud, sessions, notes, stats, seed — todas com createClient(), queries parametrizadas {sql,args}, LEFT JOIN Subject, booleans 0/1 convertidos
+- Verificação Agent Browser local:
+  - POST /api/auth/register → 201 ✅
+  - Login via UI → app carrega com Sair + UserCard ✅
+  - POST /api/seed → dados criados ✅
+  - Dashboard: 8 tarefas, 4 disciplinas, 375min estudo ✅
+  - Lint: 0 erros ✅
+- Commit: todas as mudanças + zip recriado (285KB, 141 arquivos).
+
+Stage Summary:
+- Prisma completamente removido das API routes de produção. Apenas libSQL direto.
+- Dev local ainda usa Prisma (file: SQLite nativo) — não afetado.
+- Usuário precisa: baixar zip novo, substituir pasta, push no GitHub Desktop, aguardar Vercel redeploy.
+- Variáveis de ambiente na Vercel (já configuradas): DATABASE_URL, DATABASE_AUTH_TOKEN, NEXTAUTH_SECRET, NEXTAUTH_URL.
+
+---
+Task ID: F6
+Agent: general-purpose (calendar+tasks UI enhancements)
+Task: Added recurrence, copy-to-date, Google Calendar link, reminder button to calendar+tasks views
+
+Work Log:
+- Li os contextos: worklog.md, types.ts (Recurrence/RECURRENCE_LABELS/RECURRENCE_SHORT/Task), recurrence.ts (expandRecurringTasks/getBaseTaskId/googleCalendarUrl), notifications.ts (notificationsSupported/getPermission/requestPermission/scheduleReminder), e as duas views.
+- calendar-view.tsx:
+  - Imports: adicionei CalendarPlus, Download, Bell, Info, Copy (lucide); Recurrence + RECURRENCE_LABELS (types); Popover + DropdownMenu (shadcn); helpers de recurrence.ts e notifications.ts.
+  - TaskFormState agora tem `recurrence: Recurrence` e `recurrenceEndDate: string`; emptyForm inicializa ambos ("none" / "").
+  - TaskBlock e UntimedCard ganharam `onReminder` prop + 2 novos botões por ocorrência (anchor `<a target=_blank rel=noreferrer>` para `googleCalendarUrl(task)` com aria-label "Adicionar ao Google Calendar"; e Bell button condicional a `task.startTime` com aria-label "Definir lembrete"), além do Trash2 existente.
+  - TaskDialog recebe `onCopy: (newDate: string) => Promise<void>`, mantém estado interno copyPopoverOpen/copyDate/copying; novo bloco "Repetir" + "Repetir até" (date input desabilitado quando recurrence==="none" + hint "Deixe vazio para repetir indefinidamente"); footer reescrito com Popover "Copiar para outra data" (apenas em isEdit) ao lado de Cancelar/Salvar.
+  - CalendarView: dois useMemos derivando `expandedMonthTasks = expandRecurringTasks(monthTasks, fromISO, toISO)` e `expandedDayTasks = expandRecurringTasks(selectedDayTasks, selectedDate, selectedDate)`; tasksByDay/untimedTasks/timedTasks/agendaLoading/agendaEmpty/completedCount agora consomem as listas expandidas (os contadores do header usam expandedDayTasks).
+  - openEdit usa `getBaseTaskId(task.id)` para o form.id (edita a tarefa base) e carrega recurrence/recurrenceEndDate; saveMutation envia recurrence + recurrenceEndDate no payload e usa `getBaseTaskId(data.id)` na URL PUT; handleToggle e deleteMutation.mutate usam `getBaseTaskId` em todas as chamadas.
+  - Novo copyMutation: POST /api/tasks com mesma carga do form mas date=nova data, status="pendente", recurrence="none"; onSuccess toast "Tarefa copiada para DD/MM/YYYY" + fecha dialog.
+  - handleReminder: verifica notificationsSupported, pede requestPermission() se necessário, chama scheduleReminder(...,15) e toasta "Lembrete definido para 15 min antes" (ou "Permissão de notificação negada").
+  - Header do mês ganhou DropdownMenu "Exportar" ao lado do botão "Hoje": item "Baixar .ics" como `<a href="/api/calendar/ical" download>` (cookie de sessão enviado pelo browser) e nota informativa com ícone Info explicando como sincronizar com Google Calendar via import em calendar.google.com.
+  - TaskDialog/UntimedCard/TaskBlock recebem onCopy/onReminder conforme apropriado.
+- tasks-view.tsx:
+  - Imports: adicionados CalendarPlus, Bell, Repeat, Copy (lucide); Recurrence + RECURRENCE_LABELS + RECURRENCE_SHORT (types); Popover (shadcn); googleCalendarUrl + helpers de notifications.ts.
+  - TaskFormValues agora tem recurrence + recurrenceEndDate; taskToForm/emptyForm atualizados.
+  - TaskFormDialog: handleSubmit envia recurrence + recurrenceEndDate; novo handleCopy local (POST com recurrence="none", date=nova, status="pendente", mesma carga) + toast DD/MM/YYYY; Popover "Copiar para outra data" no footer (apenas em isEdit); novo bloco "Repetir" + "Repetir até" com hint.
+  - TaskCard: novo anchor Google Calendar (CalendarPlus) + Bell button condicional a `task.startTime` (apenas quando tem horário) + Badge "Repeat" com RECURRENCE_SHORT[task.recurrence] quando recurrence !== "none".
+  - TasksView: novo handleReminder (mesma lógica do calendar); TaskCard recebe onReminder={() => handleReminder(task)}.
+- Conformidade com design rules: emerald/amber via tokens shadcn existentes (sem indigo/blue); mobile-first com `min-h-11` nos botões de toque principal; Lucide icons; pt-BR; aria-labels em todos os botões de ícone; sonner para feedback; bumpRefresh após mutations; expandRecurringTasks chamado em useMemo derivado (não armazenado em state separado); CRUD existente preservado; timeline horária e agrupamento Atrasadas/Hoje/Amanhã/Em breve intactos; toggle/delete em ocorrências recorrentes usam getBaseTaskId.
+
+Stage Summary:
+- Arquivos atualizados: `src/components/views/calendar-view.tsx` e `src/components/views/tasks-view.tsx` (apenas frontend — backend não tocado).
+- Funcionalidades adicionadas:
+  - Expansão de recorrência no grid mensal (pontos em cada ocorrência) e na agenda diária (cards/blocos por ocorrência) — calendar-view.
+  - Campos "Repetir" (Select none/daily/weekly/monthly/yearly) e "Repetir até" (date opcional com hint) em ambos os diálogos.
+  - Botão "Copiar para outra data" via Popover em ambos os diálogos de edição — POST com recurrence="none", toast DD/MM/YYYY, fecha dialog.
+  - Menu "Exportar" no header do calendário com "Baixar .ics" (anchor download para /api/calendar/ical) + nota informativa de sincronização com Google Calendar.
+  - Link "Adicionar ao Google Calendar" por task (anchor com googleCalendarUrl(task), target=_blank) em TaskBlock, UntimedCard e TaskCard.
+  - Botão "Definir lembrete" (Bell) por task com startTime em TaskBlock, UntimedCard e TaskCard — requestPermission() + scheduleReminder(...,15) + toast.
+  - Badge de recorrência (Repeat + RECURRENCE_SHORT) nos cards da Tasks view.
+  - getBaseTaskId aplicado em toggle/delete/PUT do calendar para que operações em ocorrências virtuais afetem a tarefa base.
+- Nenhum lint/build/server executado (conforme instrução).

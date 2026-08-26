@@ -28,6 +28,8 @@ interface TaskRow {
   status: string;
   type: string;
   subjectId: string | null;
+  recurrence: string;
+  recurrenceEndDate: string | null;
   createdAt: string;
   updatedAt: string;
   subject_id: string | null;
@@ -85,12 +87,14 @@ function mapTaskRow(r: TaskRow): Task {
     type: r.type as Task["type"],
     subjectId: r.subjectId,
     subject,
+    recurrence: (r.recurrence || "none") as Task["recurrence"],
+    recurrenceEndDate: r.recurrenceEndDate,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
 }
 
-const TASK_SELECT = `t.id, t.title, t.description, t.date, t."startTime", t."endTime", t.priority, t.status, t.type, t."subjectId", t."createdAt", t."updatedAt",
+const TASK_SELECT = `t.id, t.title, t.description, t.date, t."startTime", t."endTime", t.priority, t.status, t.type, t."subjectId", t.recurrence, t."recurrenceEndDate", t."createdAt", t."updatedAt",
   s.id AS subject_id, s.name AS subject_name, s.code AS subject_code, s.color AS subject_color, s.professor AS subject_professor, s.description AS subject_description, s."createdAt" AS subject_createdAt, s."updatedAt" AS subject_updatedAt`;
 
 const SESSION_SELECT = `ss.id, ss."subjectId", ss.duration, ss.date, ss.type, ss.notes, ss."createdAt",

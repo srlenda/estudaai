@@ -3,6 +3,7 @@
 export type Priority = "baixa" | "media" | "alta";
 export type TaskStatus = "pendente" | "em_andamento" | "concluida";
 export type TaskType = "atividade" | "prova" | "trabalho" | "estudo" | "leitura";
+export type Recurrence = "none" | "daily" | "weekly" | "monthly" | "yearly";
 export type LinkCategory =
   | "geral"
   | "video"
@@ -36,6 +37,8 @@ export interface Task {
   type: TaskType;
   subjectId: string | null;
   subject: Subject | null;
+  recurrence: Recurrence;
+  recurrenceEndDate: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -139,6 +142,22 @@ export const TASK_TYPE_LABELS: Record<TaskType, string> = {
   trabalho: "Trabalho",
   estudo: "Estudo",
   leitura: "Leitura",
+};
+
+export const RECURRENCE_LABELS: Record<Recurrence, string> = {
+  none: "Não repetir",
+  daily: "Diariamente",
+  weekly: "Semanalmente",
+  monthly: "Mensalmente",
+  yearly: "Anualmente",
+};
+
+export const RECURRENCE_SHORT: Record<Recurrence, string> = {
+  none: "",
+  daily: "diária",
+  weekly: "semanal",
+  monthly: "mensal",
+  yearly: "anual",
 };
 
 export const TASK_TYPE_COLORS: Record<TaskType, string> = {

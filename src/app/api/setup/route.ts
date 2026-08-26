@@ -85,6 +85,8 @@ export async function POST() {
       "type" TEXT NOT NULL DEFAULT 'atividade',
       "subjectId" TEXT,
       "userId" TEXT,
+      "recurrence" TEXT NOT NULL DEFAULT 'none',
+      "recurrenceEndDate" TEXT,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL,
       CONSTRAINT "Task_subjectId_fkey" FOREIGN KEY ("subjectId") REFERENCES "Subject"("id") ON DELETE SET NULL ON UPDATE CASCADE,
@@ -151,6 +153,10 @@ export async function POST() {
     )`,
     `CREATE INDEX IF NOT EXISTS "Note_subjectId_idx" ON "Note"("subjectId")`,
     `CREATE INDEX IF NOT EXISTS "Note_userId_idx" ON "Note"("userId")`,
+    // Migrações: adiciona colunas de recorrência em bancos já existentes
+    // (ignora erro se a coluna já existir)
+    `ALTER TABLE "Task" ADD COLUMN "recurrence" TEXT NOT NULL DEFAULT 'none'`,
+    `ALTER TABLE "Task" ADD COLUMN "recurrenceEndDate" TEXT`,
   ];
 
   const results: { ok: boolean; error?: string }[] = [];
@@ -160,7 +166,8 @@ export async function POST() {
       results.push({ ok: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      if (/already exists|duplicate/i.test(msg)) {
+      // "already exists", "duplicate column" = não é erro real (coluna/tabela já existe)
+      if (/already exists|duplicate|duplicate column/i.test(msg)) {
         results.push({ ok: true });
       } else {
         results.push({ ok: false, error: msg });

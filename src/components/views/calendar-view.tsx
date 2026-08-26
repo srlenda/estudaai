@@ -10,6 +10,11 @@ import {
   Clock,
   CalendarDays,
   Trash2,
+  CalendarPlus,
+  Download,
+  Bell,
+  Info,
+  Copy,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -20,11 +25,13 @@ import {
   Priority,
   TaskStatus,
   TaskType,
+  Recurrence,
   PRIORITY_LABELS,
   PRIORITY_COLORS,
   STATUS_LABELS,
   TASK_TYPE_LABELS,
   TASK_TYPE_COLORS,
+  RECURRENCE_LABELS,
   todayISO,
   isoDate,
 } from "@/lib/types";
@@ -52,6 +59,29 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import {
+  expandRecurringTasks,
+  getBaseTaskId,
+  googleCalendarUrl,
+} from "@/lib/recurrence";
+import {
+  notificationsSupported,
+  getPermission,
+  requestPermission,
+  scheduleReminder,
+} from "@/lib/notifications";
 
 // ---------- Constants & helpers ----------
 
@@ -158,6 +188,8 @@ interface TaskFormState {
   status: TaskStatus;
   type: TaskType;
   subjectId: string;
+  recurrence: Recurrence;
+  recurrenceEndDate: string;
 }
 
 function emptyForm(date: string, startTime = ""): TaskFormState {
@@ -171,6 +203,8 @@ function emptyForm(date: string, startTime = ""): TaskFormState {
     status: "pendente",
     type: "atividade",
     subjectId: "",
+    recurrence: "none",
+    recurrenceEndDate: "",
   };
 }
 
@@ -183,6 +217,7 @@ function TaskBlock({
   onEdit,
   onDelete,
   onToggle,
+  onReminder,
 }: {
   task: Task;
   top: number;
@@ -190,6 +225,7 @@ function TaskBlock({
   onEdit: () => void;
   onDelete: () => void;
   onToggle: () => void;
+  onReminder: () => void;
 }) {
   const color = blockColor(task);
   const done = task.status === "concluida";
@@ -271,6 +307,31 @@ function TaskBlock({
             </span>
           )}
         </div>
+        <a
+          href={googleCalendarUrl(task)}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Adicionar ao Google Calendar"
+          title="Adicionar ao Google Calendar"
+        >
+          <CalendarPlus className="size-3.5" />
+        </a>
+        {task.startTime && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onReminder();
+            }}
+            className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+            aria-label="Definir lembrete"
+            title="Definir lembrete"
+          >
+            <Bell className="size-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={(e) => {
@@ -292,11 +353,13 @@ function UntimedCard({
   onEdit,
   onDelete,
   onToggle,
+  onReminder,
 }: {
   task: Task;
   onEdit: () => void;
   onDelete: () => void;
   onToggle: () => void;
+  onReminder: () => void;
 }) {
   const color = blockColor(task);
   const done = task.status === "concluida";
@@ -354,6 +417,31 @@ function UntimedCard({
           )}
         </div>
       </div>
+      <a
+        href={googleCalendarUrl(task)}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+        aria-label="Adicionar ao Google Calendar"
+        title="Adicionar ao Google Calendar"
+      >
+        <CalendarPlus className="size-3.5" />
+      </a>
+      {task.startTime && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onReminder();
+          }}
+          className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
+          aria-label="Definir lembrete"
+          title="Definir lembrete"
+        >
+          <Bell className="size-3.5" />
+        </button>
+      )}
       <button
         type="button"
         onClick={(e) => {
@@ -379,6 +467,7 @@ function TaskDialog({
   isEdit,
   saving,
   onSave,
+  onCopy,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -389,9 +478,31 @@ function TaskDialog({
   isEdit: boolean;
   saving: boolean;
   onSave: () => void;
+  onCopy: (newDate: string) => Promise<void>;
 }) {
   const update = (patch: Partial<TaskFormState>) =>
     setForm((f) => ({ ...f, ...patch }));
+
+  const [copyPopoverOpen, setCopyPopoverOpen] = React.useState(false);
+  const [copyDate, setCopyDate] = React.useState("");
+  const [copying, setCopying] = React.useState(false);
+
+  const handleCopy = async () => {
+    if (!copyDate) {
+      toast.error("Selecione uma data para copiar.");
+      return;
+    }
+    setCopying(true);
+    try {
+      await onCopy(copyDate);
+      setCopyPopoverOpen(false);
+      setCopyDate("");
+    } catch {
+      // toast handled by parent mutation
+    } finally {
+      setCopying(false);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -565,26 +676,102 @@ function TaskDialog({
               rows={3}
             />
           </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label>Repetir</Label>
+              <Select
+                value={form.recurrence}
+                onValueChange={(v) => update({ recurrence: v as Recurrence })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(RECURRENCE_LABELS) as Recurrence[]).map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {RECURRENCE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="tf-rec-end">Repetir até</Label>
+              <Input
+                id="tf-rec-end"
+                type="date"
+                value={form.recurrenceEndDate}
+                onChange={(e) => update({ recurrenceEndDate: e.target.value })}
+                disabled={form.recurrence === "none"}
+              />
+              {form.recurrence !== "none" && (
+                <p className="text-xs text-muted-foreground">
+                  Deixe vazio para repetir indefinidamente
+                </p>
+              )}
+            </div>
+          </div>
         </div>
 
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button variant="outline" type="button" className="min-h-11">
-              Cancelar
+        <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
+          {isEdit && (
+            <Popover open={copyPopoverOpen} onOpenChange={setCopyPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  type="button"
+                  className="min-h-11 w-full sm:w-auto"
+                  disabled={copying}
+                >
+                  <Copy className="size-4" /> Copiar para outra data
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="start" className="w-72">
+                <div className="grid gap-2">
+                  <Label htmlFor="tf-copy-date">Nova data</Label>
+                  <Input
+                    id="tf-copy-date"
+                    type="date"
+                    value={copyDate}
+                    onChange={(e) => setCopyDate(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="min-h-11"
+                    disabled={copying || !copyDate}
+                    onClick={handleCopy}
+                  >
+                    {copying ? "Copiando..." : "Copiar"}
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
+          <div className="flex flex-col-reverse sm:flex-row gap-2 sm:ml-auto">
+            <DialogClose asChild>
+              <Button
+                variant="outline"
+                type="button"
+                className="min-h-11 flex-1 sm:flex-none"
+              >
+                Cancelar
+              </Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={onSave}
+              disabled={saving}
+              className="min-h-11 flex-1 sm:flex-none"
+            >
+              {saving
+                ? "Salvando..."
+                : isEdit
+                  ? "Salvar alterações"
+                  : "Criar atividade"}
             </Button>
-          </DialogClose>
-          <Button
-            type="button"
-            onClick={onSave}
-            disabled={saving}
-            className="min-h-11"
-          >
-            {saving
-              ? "Salvando..."
-              : isEdit
-                ? "Salvar alterações"
-                : "Criar atividade"}
-          </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -630,16 +817,28 @@ export function CalendarView() {
     queryFn: () => api<Subject[]>("/api/subjects"),
   });
 
-  // Group month tasks per day for the grid dots.
+  // Expand recurring tasks across the visible month so dots appear on every occurrence.
+  const expandedMonthTasks = React.useMemo(
+    () => expandRecurringTasks(monthTasks, fromISO, toISO),
+    [monthTasks, fromISO, toISO],
+  );
+
+  // Group expanded month tasks per day for the grid dots.
   const tasksByDay = React.useMemo(() => {
     const map = new Map<string, Task[]>();
-    for (const t of monthTasks) {
+    for (const t of expandedMonthTasks) {
       const arr = map.get(t.date);
       if (arr) arr.push(t);
       else map.set(t.date, [t]);
     }
     return map;
-  }, [monthTasks]);
+  }, [expandedMonthTasks]);
+
+  // Expand recurring tasks for the selected day agenda (virtual occurrences).
+  const expandedDayTasks = React.useMemo(
+    () => expandRecurringTasks(selectedDayTasks, selectedDate, selectedDate),
+    [selectedDayTasks, selectedDate],
+  );
 
   // ---- Dialog state ----
   const [dialogOpen, setDialogOpen] = React.useState(false);
@@ -660,7 +859,7 @@ export function CalendarView() {
 
   const openEdit = (task: Task) => {
     setForm({
-      id: task.id,
+      id: getBaseTaskId(task.id),
       title: task.title,
       description: task.description ?? "",
       date: task.date,
@@ -670,6 +869,8 @@ export function CalendarView() {
       status: task.status,
       type: task.type,
       subjectId: task.subjectId ?? "",
+      recurrence: task.recurrence ?? "none",
+      recurrenceEndDate: task.recurrenceEndDate ?? "",
     });
     setErrors({});
     setDialogOpen(true);
@@ -688,9 +889,12 @@ export function CalendarView() {
         status: data.status,
         type: data.type,
         subjectId: data.subjectId || null,
+        recurrence: data.recurrence,
+        recurrenceEndDate:
+          data.recurrence === "none" ? null : (data.recurrenceEndDate || null),
       };
       if (data.id) {
-        return api<Task>(`/api/tasks/${data.id}`, {
+        return api<Task>(`/api/tasks/${getBaseTaskId(data.id)}`, {
           method: "PUT",
           body: JSON.stringify(payload),
         });
@@ -707,6 +911,44 @@ export function CalendarView() {
     },
     onError: (e: Error) =>
       toast.error(e.message || "Erro ao salvar atividade"),
+  });
+
+  const copyMutation = useMutation({
+    mutationFn: async ({
+      src,
+      newDate,
+    }: {
+      src: TaskFormState;
+      newDate: string;
+    }) => {
+      const payload = {
+        title: src.title.trim(),
+        description: src.description.trim() || null,
+        date: newDate,
+        startTime: src.startTime || null,
+        endTime: src.endTime || null,
+        priority: src.priority,
+        status: "pendente" as TaskStatus,
+        type: src.type,
+        subjectId: src.subjectId || null,
+        recurrence: "none" as Recurrence,
+        recurrenceEndDate: null,
+      };
+      return api<Task>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+    },
+    onSuccess: (_data, vars) => {
+      bumpRefresh();
+      const [y, m, d] = vars.newDate.split("-").map(Number);
+      toast.success(
+        `Tarefa copiada para ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`,
+      );
+      setDialogOpen(false);
+    },
+    onError: (e: Error) =>
+      toast.error(e.message || "Erro ao copiar tarefa"),
   });
 
   const deleteMutation = useMutation({
@@ -744,14 +986,31 @@ export function CalendarView() {
 
   const handleToggle = (task: Task) => {
     toggleStatusMutation.mutate({
-      id: task.id,
+      id: getBaseTaskId(task.id),
       status: task.status === "concluida" ? "pendente" : "concluida",
     });
   };
 
+  const handleReminder = async (task: Task) => {
+    if (!notificationsSupported()) {
+      toast.error("Seu navegador não suporta notificações.");
+      return;
+    }
+    let perm = getPermission();
+    if (perm !== "granted") {
+      perm = await requestPermission();
+    }
+    if (perm !== "granted") {
+      toast.error("Permissão de notificação negada.");
+      return;
+    }
+    scheduleReminder(task.title, task.date, task.startTime, 15);
+    toast.success("Lembrete definido para 15 min antes");
+  };
+
   // ---- Derived data for the day agenda ----
-  const untimedTasks = selectedDayTasks.filter((t) => !t.startTime);
-  const timedTasks = selectedDayTasks.filter((t) => !!t.startTime);
+  const untimedTasks = expandedDayTasks.filter((t) => !t.startTime);
+  const timedTasks = expandedDayTasks.filter((t) => !!t.startTime);
 
   const dayStartMin = HOUR_START * 60;
   const dayEndMin = (HOUR_END + 1) * 60; // 24:00
@@ -803,10 +1062,10 @@ export function CalendarView() {
     setSelectedDate(todayISO());
   };
 
-  const agendaLoading = dayLoading && selectedDayTasks.length === 0;
+  const agendaLoading = dayLoading && expandedDayTasks.length === 0;
   const agendaEmpty =
-    !agendaLoading && selectedDayTasks.length === 0;
-  const completedCount = selectedDayTasks.filter(
+    !agendaLoading && expandedDayTasks.length === 0;
+  const completedCount = expandedDayTasks.filter(
     (t) => t.status === "concluida",
   ).length;
 
@@ -842,14 +1101,44 @@ export function CalendarView() {
               <ChevronRight className="size-4" />
             </Button>
           </div>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={goToday}
-            className="min-h-11"
-          >
-            Hoje
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={goToday}
+              className="min-h-11"
+            >
+              Hoje
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="min-h-11"
+                  aria-label="Exportar calendário"
+                >
+                  <Download className="size-4" />
+                  <span className="hidden sm:inline">Exportar</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <a href="/api/calendar/ical" download>
+                    <Download className="size-4" /> Baixar .ics
+                  </a>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <div className="px-2 py-2 text-xs text-muted-foreground leading-relaxed flex gap-1.5 max-w-[260px]">
+                  <Info className="size-3 shrink-0 mt-0.5" />
+                  <span>
+                    Para sincronizar com o Google Calendar, baixe o .ics acima
+                    e importe em calendar.google.com → Settings → Import.
+                  </span>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* weekday header */}
@@ -948,9 +1237,9 @@ export function CalendarView() {
               )}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {selectedDayTasks.length === 0
+              {expandedDayTasks.length === 0
                 ? "Nenhuma atividade"
-                : `${selectedDayTasks.length} atividade(s) · ${completedCount} concluída(s)`}
+                : `${expandedDayTasks.length} atividade(s) · ${completedCount} concluída(s)`}
             </p>
           </div>
           <Button
@@ -991,8 +1280,11 @@ export function CalendarView() {
                         key={t.id}
                         task={t}
                         onEdit={() => openEdit(t)}
-                        onDelete={() => deleteMutation.mutate(t.id)}
+                        onDelete={() =>
+                          deleteMutation.mutate(getBaseTaskId(t.id))
+                        }
                         onToggle={() => handleToggle(t)}
+                        onReminder={() => handleReminder(t)}
                       />
                     ))}
                   </div>
@@ -1053,8 +1345,11 @@ export function CalendarView() {
                         top={top}
                         height={height}
                         onEdit={() => openEdit(task)}
-                        onDelete={() => deleteMutation.mutate(task.id)}
+                        onDelete={() =>
+                          deleteMutation.mutate(getBaseTaskId(task.id))
+                        }
                         onToggle={() => handleToggle(task)}
+                        onReminder={() => handleReminder(task)}
                       />
                     ))}
                   </div>
@@ -1075,6 +1370,9 @@ export function CalendarView() {
         isEdit={!!form.id}
         saving={saveMutation.isPending}
         onSave={handleSave}
+        onCopy={(newDate) =>
+          copyMutation.mutateAsync({ src: form, newDate })
+        }
       />
     </div>
   );

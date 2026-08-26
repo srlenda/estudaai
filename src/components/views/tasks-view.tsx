@@ -16,6 +16,10 @@ import {
   CircleDashed,
   CircleDot,
   CircleCheckBig,
+  CalendarPlus,
+  Bell,
+  Repeat,
+  Copy,
 } from "lucide-react";
 
 import { api } from "@/lib/api";
@@ -27,11 +31,14 @@ import {
   type Priority,
   type TaskStatus,
   type TaskType,
+  type Recurrence,
   PRIORITY_LABELS,
   PRIORITY_COLORS,
   STATUS_LABELS,
   TASK_TYPE_LABELS,
   TASK_TYPE_COLORS,
+  RECURRENCE_LABELS,
+  RECURRENCE_SHORT,
   todayISO,
 } from "@/lib/types";
 
@@ -67,6 +74,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { googleCalendarUrl } from "@/lib/recurrence";
+import {
+  notificationsSupported,
+  getPermission,
+  requestPermission,
+  scheduleReminder,
+} from "@/lib/notifications";
 
 // ---------- helpers ----------
 
@@ -143,6 +162,8 @@ interface TaskFormValues {
   status: TaskStatus;
   type: TaskType;
   subjectId: string; // "" = nenhuma
+  recurrence: Recurrence;
+  recurrenceEndDate: string;
 }
 
 function taskToForm(t: Task): TaskFormValues {
@@ -156,6 +177,8 @@ function taskToForm(t: Task): TaskFormValues {
     status: t.status,
     type: t.type,
     subjectId: t.subjectId ?? "",
+    recurrence: t.recurrence ?? "none",
+    recurrenceEndDate: t.recurrenceEndDate ?? "",
   };
 }
 
@@ -169,6 +192,8 @@ const emptyForm: TaskFormValues = {
   status: "pendente",
   type: "atividade",
   subjectId: "",
+  recurrence: "none",
+  recurrenceEndDate: "",
 };
 
 // ---------- Task Form Dialog ----------
@@ -188,10 +213,15 @@ function TaskFormDialog({
   const bumpRefresh = useAppStore((s) => s.bumpRefresh);
   const [values, setValues] = React.useState<TaskFormValues>(emptyForm);
   const [submitting, setSubmitting] = React.useState(false);
+  const [copyPopoverOpen, setCopyPopoverOpen] = React.useState(false);
+  const [copyDate, setCopyDate] = React.useState("");
+  const [copying, setCopying] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
       setValues(editing ? taskToForm(editing) : emptyForm);
+      setCopyDate("");
+      setCopyPopoverOpen(false);
     }
   }, [open, editing]);
 
@@ -218,6 +248,11 @@ function TaskFormDialog({
       status: values.status,
       type: values.type,
       subjectId: values.subjectId || null,
+      recurrence: values.recurrence,
+      recurrenceEndDate:
+        values.recurrence === "none"
+          ? null
+          : (values.recurrenceEndDate || null),
     };
     try {
       if (isEdit && editing) {
@@ -242,6 +277,48 @@ function TaskFormDialog({
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!copyDate) {
+      toast.error("Selecione uma data para copiar.");
+      return;
+    }
+    setCopying(true);
+    const body = {
+      title: values.title.trim() || editing?.title || "Tarefa",
+      description: values.description.trim() || null,
+      date: copyDate,
+      startTime: values.startTime || null,
+      endTime: values.endTime || null,
+      priority: values.priority,
+      status: "pendente" as TaskStatus,
+      type: values.type,
+      subjectId: values.subjectId || null,
+      recurrence: "none" as Recurrence,
+      recurrenceEndDate: null,
+    };
+    try {
+      await api<Task>("/api/tasks", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const [y, m, d] = copyDate.split("-").map(Number);
+      toast.success(
+        `Tarefa copiada para ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`,
+      );
+      qc.invalidateQueries({ queryKey: ["tasks"] });
+      bumpRefresh();
+      setCopyPopoverOpen(false);
+      setCopyDate("");
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Erro ao copiar tarefa"
+      );
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -419,22 +496,103 @@ function TaskFormDialog({
             />
           </div>
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={submitting}
-            >
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting
-                ? "Salvando..."
-                : isEdit
-                ? "Salvar alterações"
-                : "Criar tarefa"}
-            </Button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label>Repetir</Label>
+              <Select
+                value={values.recurrence}
+                onValueChange={(v) =>
+                  setValues((s) => ({ ...s, recurrence: v as Recurrence }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(RECURRENCE_LABELS) as Recurrence[]).map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {RECURRENCE_LABELS[r]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="task-rec-end">Repetir até</Label>
+              <Input
+                id="task-rec-end"
+                type="date"
+                value={values.recurrenceEndDate}
+                onChange={(e) =>
+                  setValues((s) => ({ ...s, recurrenceEndDate: e.target.value }))
+                }
+                disabled={values.recurrence === "none"}
+              />
+              {values.recurrence !== "none" && (
+                <p className="text-xs text-muted-foreground">
+                  Deixe vazio para repetir indefinidamente
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col-reverse sm:flex-row sm:justify-between gap-2">
+            {isEdit && (
+              <Popover open={copyPopoverOpen} onOpenChange={setCopyPopoverOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    type="button"
+                    className="min-h-11 w-full sm:w-auto"
+                    disabled={copying}
+                  >
+                    <Copy className="h-4 w-4" /> Copiar para outra data
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-72">
+                  <div className="grid gap-2">
+                    <Label htmlFor="task-copy-date">Nova data</Label>
+                    <Input
+                      id="task-copy-date"
+                      type="date"
+                      value={copyDate}
+                      onChange={(e) => setCopyDate(e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="min-h-11"
+                      disabled={copying || !copyDate}
+                      onClick={handleCopy}
+                    >
+                      {copying ? "Copiando..." : "Copiar"}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+            <div className="flex flex-col-reverse sm:flex-row gap-2 sm:ml-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                disabled={submitting}
+                className="min-h-11 flex-1 sm:flex-none"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                disabled={submitting}
+                className="min-h-11 flex-1 sm:flex-none"
+              >
+                {submitting
+                  ? "Salvando..."
+                  : isEdit
+                  ? "Salvar alterações"
+                  : "Criar tarefa"}
+              </Button>
+            </div>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -476,11 +634,13 @@ function TaskCard({
   onEdit,
   onDelete,
   onToggle,
+  onReminder,
 }: {
   task: Task;
   onEdit: () => void;
   onDelete: () => void;
   onToggle: () => void;
+  onReminder: () => void;
 }) {
   const done = task.status === "concluida";
   return (
@@ -520,6 +680,29 @@ function TaskCard({
               {task.title}
             </h3>
             <div className="flex items-center gap-0.5 shrink-0 -mr-1">
+              <a
+                href={googleCalendarUrl(task)}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+                aria-label="Adicionar ao Google Calendar"
+                title="Adicionar ao Google Calendar"
+              >
+                <CalendarPlus className="h-4 w-4" />
+              </a>
+              {task.startTime && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                  onClick={onReminder}
+                  aria-label="Definir lembrete"
+                  title="Definir lembrete"
+                >
+                  <Bell className="h-4 w-4" />
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="ghost"
@@ -562,6 +745,16 @@ function TaskCard({
             >
               {PRIORITY_LABELS[task.priority]}
             </Badge>
+            {task.recurrence && task.recurrence !== "none" && (
+              <Badge
+                variant="outline"
+                className="font-medium gap-1"
+                title={`Recorrência ${RECURRENCE_SHORT[task.recurrence]}`}
+              >
+                <Repeat className="h-3 w-3" />
+                {RECURRENCE_SHORT[task.recurrence]}
+              </Badge>
+            )}
             <StatusIndicator status={task.status} />
           </div>
 
@@ -723,6 +916,23 @@ export function TasksView() {
     setEditing(task);
     setDialogOpen(true);
   }
+
+  const handleReminder = async (task: Task) => {
+    if (!notificationsSupported()) {
+      toast.error("Seu navegador não suporta notificações.");
+      return;
+    }
+    let perm = getPermission();
+    if (perm !== "granted") {
+      perm = await requestPermission();
+    }
+    if (perm !== "granted") {
+      toast.error("Permissão de notificação negada.");
+      return;
+    }
+    scheduleReminder(task.title, task.date, task.startTime, 15);
+    toast.success("Lembrete definido para 15 min antes");
+  };
 
   const completedCount = tasks?.filter((t) => t.status === "concluida").length ?? 0;
 
@@ -920,6 +1130,7 @@ export function TasksView() {
                             : "concluida",
                       })
                     }
+                    onReminder={() => handleReminder(task)}
                   />
                 ))}
               </div>

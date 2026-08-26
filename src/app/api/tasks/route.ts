@@ -25,6 +25,8 @@ interface TaskRow {
   status: string;
   type: string;
   subjectId: string | null;
+  recurrence: string;
+  recurrenceEndDate: string | null;
   createdAt: string;
   updatedAt: string;
   subject_id: string | null;
@@ -64,12 +66,14 @@ function mapTask(r: TaskRow): Task {
     type: r.type as Task["type"],
     subjectId: r.subjectId,
     subject,
+    recurrence: (r.recurrence || "none") as Task["recurrence"],
+    recurrenceEndDate: r.recurrenceEndDate,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
   };
 }
 
-const TASK_SELECT = `t.id, t.title, t.description, t.date, t."startTime", t."endTime", t.priority, t.status, t.type, t."subjectId", t."createdAt", t."updatedAt",
+const TASK_SELECT = `t.id, t.title, t.description, t.date, t."startTime", t."endTime", t.priority, t.status, t.type, t."subjectId", t.recurrence, t."recurrenceEndDate", t."createdAt", t."updatedAt",
   s.id AS subject_id, s.name AS subject_name, s.code AS subject_code, s.color AS subject_color, s.professor AS subject_professor, s.description AS subject_description, s."createdAt" AS subject_createdAt, s."updatedAt" AS subject_updatedAt`;
 
 export async function GET(req: NextRequest) {
@@ -89,24 +93,36 @@ export async function GET(req: NextRequest) {
     const args: unknown[] = [userId];
 
     if (date) {
-      where.push("t.date = ?");
-      args.push(date);
-    }
-    if (subjectId) {
-      where.push('t."subjectId" = ?');
-      args.push(subjectId);
-    }
-    if (status) {
-      where.push("t.status = ?");
-      args.push(status);
-    }
-    if (from) {
-      where.push("t.date >= ?");
-      args.push(from);
-    }
-    if (to) {
-      where.push("t.date <= ?");
-      args.push(to);
+      // Para uma data específica: tarefas naquela data OU tarefas recorrentes
+      // que podem gerar ocorrência naquela data (data base <= date e sem
+      // recurrenceEndDate anterior a date).
+      where.push(
+        `(t.date = ? OR (t.recurrence != 'none' AND t.date <= ? AND (t."recurrenceEndDate" IS NULL OR t."recurrenceEndDate" >= ?)))`
+      );
+      args.push(date, date, date);
+    } else {
+      if (subjectId) {
+        where.push('t."subjectId" = ?');
+        args.push(subjectId);
+      }
+      if (status) {
+        where.push("t.status = ?");
+        args.push(status);
+      }
+      if (from && to) {
+        // Range: tarefas no range OU recorrentes que podem gerar ocorrências
+        // no range (data base <= to e recurrenceEndDate >= from ou null).
+        where.push(
+          `((t.date >= ? AND t.date <= ?) OR (t.recurrence != 'none' AND t.date <= ? AND (t."recurrenceEndDate" IS NULL OR t."recurrenceEndDate" >= ?)))`
+        );
+        args.push(from, to, to, from);
+      } else if (from) {
+        where.push("t.date >= ?");
+        args.push(from);
+      } else if (to) {
+        where.push("t.date <= ?");
+        args.push(to);
+      }
     }
 
     const client = getClient();
@@ -133,7 +149,7 @@ export async function POST(req: NextRequest) {
   }
   try {
     const body = await req.json();
-    const { title, description, date, startTime, endTime, priority, status, type, subjectId } = body;
+    const { title, description, date, startTime, endTime, priority, status, type, subjectId, recurrence, recurrenceEndDate } = body;
     if (!title || !date) {
       return NextResponse.json(
         { error: "Título e data são obrigatórios" },
@@ -146,7 +162,7 @@ export async function POST(req: NextRequest) {
     const now = new Date().toISOString();
 
     await client.execute({
-      sql: `INSERT INTO "Task" (id, title, description, date, "startTime", "endTime", priority, status, type, "subjectId", "userId", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql: `INSERT INTO "Task" (id, title, description, date, "startTime", "endTime", priority, status, type, "subjectId", "userId", recurrence, "recurrenceEndDate", "createdAt", "updatedAt") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       args: [
         id,
         title,
@@ -159,6 +175,8 @@ export async function POST(req: NextRequest) {
         type || "atividade",
         subjectId || null,
         userId,
+        recurrence || "none",
+        recurrenceEndDate || null,
         now,
         now,
       ],

@@ -1,0 +1,61 @@
+{
+  "name": "EstudaAí — Gerenciador de Tarefas Acadêmico",
+  "short_name": "EstudaAí",
+  "description": "Organize sua vida acadêmica: calendário de atividades por horário, disciplinas, links de estudo, integração com nuvem, timer Pomodoro e estatísticas de produtividade.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#10b981",
+  "categories": ["education", "productivity", "utilities"],
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Calendário",
+      "short_name": "Calendário",
+      "description": "Ver agenda por horários",
+      "url": "/?view=calendar",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Nova tarefa",
+      "short_name": "Tarefa",
+      "description": "Adicionar uma tarefa",
+      "url": "/?view=tasks"
+    },
+    {
+      "name": "Pomodoro",
+      "short_name": "Pomodoro",
+      "description": "Iniciar sessão de foco",
+      "url": "/?view=pomodoro"
+    }
+  ]
+}

@@ -481,3 +481,32 @@ Stage Summary:
 - 4 features implementadas e funcionando.
 - Commit + zip recriado (146 arquivos, 297KB).
 - Limitações honestas documentadas: sync bidirecional Google/Microsoft precisa OAuth do usuário; push em background precisa PWA (Fase 3).
+
+---
+Task ID: S1-S4
+Agent: main (orchestrator)
+Task: Opção 'manter conectado' + logout por inatividade
+
+Work Log:
+- S1: auth.ts reescrito:
+  - Credencial rememberMe passada do form para authorize
+  - Token JWT armazena rememberMe, loginTime, lastActivity
+  - Constantes: REMEMBER_SESSION_MAX_AGE (30 dias), TEMP_SESSION_MAX_AGE (8h), INACTIVITY_TIMEOUT (30 min)
+  - Callback jwt verifica expiração a cada request (rememberMe: 30 dias; !rememberMe: 8h OU 30 min inatividade)
+  - Trigger "update" renova lastActivity (chamado pelo cliente)
+  - Sessão expõe rememberMe para o cliente
+- S2: login-view.tsx: checkbox 'Manter conectado' (marcado por padrão) com indicador dinâmico ('30 dias' / '8h + logout por inatividade')
+- S3: hooks/use-activity-tracker.ts: detecta mousemove/keydown/click/scroll/touch, atualiza lastActivity via update() a cada 2 min (throttled), só ativa quando rememberMe=false, também atualiza ao voltar à aba visível
+- app-shell.tsx: useActivityTracker() integrado + UserCard mostra indicador (ShieldCheck verde 'Manter conectado (30 dias)' / Clock âmbar 'Sessão temporária (8h / 30 min inativo)') com tooltip explicativo
+
+Verificação Agent Browser:
+- Checkbox aparece e funciona (marcar/desmarcar) ✅
+- Login com remember me → indicador 'Manter conectado (30 dias)' ✅
+- Login sem remember me → indicador 'Sessão temporária (8h / 30 min inativo)' ✅
+- /api/auth/session retorna rememberMe: false e expires correto (8h) ✅
+- Lint: 0 erros ✅
+
+Stage Summary:
+- Commit + zip recriado (147 arquivos, 301KB).
+- Funcionalidade completa: usuário escolhe ao logar se quer manter conectado ou não.
+- Sessões temporárias expiram automaticamente (8h OU 30 min inativo).

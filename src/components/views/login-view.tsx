@@ -55,6 +55,7 @@ export function LoginView() {
 function LoginForm({ onSuccess }: { onSuccess: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -68,6 +69,7 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       const res = await signIn("credentials", {
         email: email.trim().toLowerCase(),
         password,
+        rememberMe: String(rememberMe),
         redirect: false,
       });
       if (res?.error) {
@@ -117,6 +119,35 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
             disabled={loading}
           />
         </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={rememberMe}
+          onClick={() => setRememberMe(!rememberMe)}
+          className={`h-4 w-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+            rememberMe
+              ? "bg-primary border-primary text-primary-foreground"
+              : "border-muted-foreground/40"
+          }`}
+        >
+          {rememberMe && (
+            <svg viewBox="0 0 24 24" fill="none" className="h-3 w-3" stroke="currentColor" strokeWidth="4">
+              <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+        <Label htmlFor="remember-me" className="text-sm cursor-pointer font-normal flex-1">
+          Manter conectado
+        </Label>
+        <span
+          id="remember-me"
+          className="text-[11px] text-muted-foreground"
+        >
+          {rememberMe ? "30 dias" : "8h + logout por inatividade"}
+        </span>
       </div>
 
       <Button type="submit" className="w-full" disabled={loading}>

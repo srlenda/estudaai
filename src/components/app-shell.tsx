@@ -1,6 +1,6 @@
 "use client";
 
-import { GraduationCap, Moon, Sun, Menu, LogOut } from "lucide-react";
+import { GraduationCap, Moon, Sun, Menu, LogOut, Clock, ShieldCheck } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useSession, signOut } from "next-auth/react";
 import { useAppStore } from "@/lib/store";
@@ -8,6 +8,7 @@ import type { ViewKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { useActivityTracker } from "@/hooks/use-activity-tracker";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -58,6 +59,8 @@ function ThemeToggle() {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { currentView, setView, sidebarOpen, setSidebarOpen } = useAppStore();
+  // Rastreia atividade do usuário para renovar sessão "não manter conectado"
+  useActivityTracker();
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -194,6 +197,9 @@ function UserCard() {
     .join("")
     .toUpperCase();
 
+  // rememberMe é exposto via callback session (ver auth.ts)
+  const rememberMe = (session as unknown as { rememberMe?: boolean }).rememberMe ?? true;
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2.5 rounded-lg bg-muted/60 p-2.5">
@@ -206,6 +212,26 @@ function UserCard() {
           <p className="text-sm font-medium truncate leading-none">{name}</p>
           <p className="text-[11px] text-muted-foreground truncate mt-1">{email}</p>
         </div>
+      </div>
+      <div
+        className="flex items-center gap-1.5 text-[11px] text-muted-foreground px-1"
+        title={
+          rememberMe
+            ? "Sessão de 30 dias — você ficará conectado"
+            : "Sessão temporária — sairá automaticamente após 8h ou 30 min de inatividade"
+        }
+      >
+        {rememberMe ? (
+          <>
+            <ShieldCheck className="h-3 w-3 text-emerald-500" />
+            <span>Manter conectado (30 dias)</span>
+          </>
+        ) : (
+          <>
+            <Clock className="h-3 w-3 text-amber-500" />
+            <span>Sessão temporária (8h / 30 min inativo)</span>
+          </>
+        )}
       </div>
       <Button
         variant="outline"

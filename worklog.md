@@ -448,3 +448,36 @@ Stage Summary:
   - Badge de recorrência (Repeat + RECURRENCE_SHORT) nos cards da Tasks view.
   - getBaseTaskId aplicado em toggle/delete/PUT do calendar para que operações em ocorrências virtuais afetem a tarefa base.
 - Nenhum lint/build/server executado (conforme instrução).
+
+---
+Task ID: F1-F7
+Agent: main (orchestrator) + subagent F6
+Task: 4 novas funcionalidades pedidas pelo usuário
+
+Work Log:
+- F1: Schema — adicionado recurrence (none/daily/weekly/monthly/yearly) + recurrenceEndDate ao model Task. db:push. /api/setup: ALTER TABLE para migrar bancos existentes.
+- F2: types.ts — tipo Recurrence + RECURRENCE_LABELS + RECURRENCE_SHORT. Task interface atualizada.
+- F3: lib/recurrence.ts — expandRecurringTasks(tasks, from, to) gera ocorrências virtuais com id sufixado __YYYY-MM-DD. getBaseTaskId() extrai id real. googleCalendarUrl(task) gera link "Add ao Google Calendar".
+- F4: lib/notifications.ts — Web Notifications API: requestPermission, showNotification, scheduleReminder (15 min antes).
+- F5: /api/calendar/ical — GET autenticado gera feed .ics com todas as tarefas do usuário (eventos de dia inteiro ou com horário).
+- F6 [subagente]: calendar-view + tasks-view atualizados:
+  - Select de recorrência + campo "Repetir até" no dialog
+  - expandRecurringTasks aplicado no mês e na agenda
+  - Botão "Copiar para outra data" (Popover com date input)
+  - Botão "Exportar calendário" (DropdownMenu: baixar .ics + info Google Calendar)
+  - Link "Adicionar ao Google Calendar" por tarefa (CalendarPlus icon)
+  - Botão "Lembrar" por tarefa com startTime (Bell icon + scheduleReminder)
+  - Badge de recorrência nos cards (Repeat icon)
+- F7: Bug corrigido — /api/tasks GET com from/to agora retorna tarefas recorrentes cuja data base é anterior ao range (usando OR com recurrence != 'none'). Antes a recorrência não aparecia em outros meses porque a tarefa base era filtrada fora do range.
+
+Verificação Agent Browser:
+- Tarefa semanal criada em 26/08 → aparece em 02/09, 09/09, 16/09, 23/09, 30/09 ✅
+- /api/calendar/ical retorna .ics válido (BEGIN:VCALENDAR...) ✅
+- Dialog tem Select de recorrência com 5 opções ✅
+- Botão "Exportar calendário" aparece no header ✅
+- Lint: 0 erros ✅
+
+Stage Summary:
+- 4 features implementadas e funcionando.
+- Commit + zip recriado (146 arquivos, 297KB).
+- Limitações honestas documentadas: sync bidirecional Google/Microsoft precisa OAuth do usuário; push em background precisa PWA (Fase 3).

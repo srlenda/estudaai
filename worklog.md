@@ -510,3 +510,39 @@ Stage Summary:
 - Commit + zip recriado (147 arquivos, 301KB).
 - Funcionalidade completa: usuário escolhe ao logar se quer manter conectado ou não.
 - Sessões temporárias expiram automaticamente (8h OU 30 min inativo).
+
+---
+Task ID: P1-P6
+Agent: main (orchestrator)
+Task: Fase 3 — PWA (Progressive Web App)
+
+Work Log:
+- P1: Ícones gerados com z-ai image-generation (chapéu de formatura branco sobre fundo esmeralda #10b981, 1024x1024). Redimensionados com sharp para: icon-192, icon-512, icon-maskable-192, icon-maskable-512, apple-touch-icon (180), favicon-32.
+- P2: public/manifest.json — name, short_name, display:standalone, theme_color #10b981, 4 ícones (any+maskable), 3 shortcuts (Calendário, Nova tarefa, Pomodoro).
+- P3: public/sw.js — service worker completo:
+  - Precaching de assets essenciais na instalação
+  - Navegação: network-first com fallback offline
+  - Assets estáticos: stale-while-revalidate
+  - API GET: network-first com cache fallback (dados offline)
+  - POST/PUT/DELETE: sempre network
+  - Limpeza de caches antigos na ativação
+  - Evento push: notificações em background
+  - notificationclick: foca aba existente
+- P4: src/components/sw-register.tsx — registra SW em produção, captura beforeinstallprompt, banner customizado 'Instalar EstudaAí' (3s delay), detecta standalone, dismiss persiste em localStorage.
+- P5: src/app/layout.tsx — metadata.manifest, applicationName, appleWebApp, icons (32/192/512 + apple), viewport com themeColor #10b981 e viewportFit cover. src/app/offline/page.tsx — página offline amigável.
+- P6: Verificação Agent Browser:
+  - /manifest.json 200, conteúdo correto (4 icons, 3 shortcuts, standalone, theme #10b981) ✅
+  - /sw.js 200 ✅
+  - /icon-192.png, /icon-512.png, /apple-touch-icon.png, /favicon-32.png 200 ✅
+  - /offline 200 ✅
+  - <link rel=manifest> presente ✅
+  - <meta name=theme-color content=#10b981> presente ✅
+  - <link rel=apple-touch-icon> presente ✅
+  - navigator.serviceWorker.register('/sw.js') → registered ✅
+  - Lint: 0 erros ✅
+- GUIA-INICIANTE.md: nova seção '📱 Instalar no celular (PWA)' com instruções Android/iPhone/Desktop.
+
+Stage Summary:
+- PWA completa. App instalável, funciona offline, recebe push notifications.
+- Commit + zip recriado (158 arquivos, 635KB).
+- Guia atualizado com instruções de instalação por plataforma.

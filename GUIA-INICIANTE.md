@@ -295,5 +295,109 @@ senhas e os tokens em segurança.
 
 ---
 
+
+---
+
+## 📱 Instalar no celular (PWA)
+
+Depois que o app estiver no ar, você pode instalá-lo como um app nativo no
+celular ou desktop — sem precisar de loja de apps!
+
+### No Android (Chrome)
+1. Abra a URL do app no Chrome
+2. Faça login
+3. O Chrome vai mostrar um banner **"Instalar EstudaAí"** — toque em **Instalar**
+4. Se o banner não aparecer, toque no menu (3 pontos) → **"Instalar aplicativo"**
+5. Pronto! Ícone aparece na tela inicial, abre em tela cheia
+
+### No iPhone/iPad (Safari)
+1. Abra a URL no Safari
+2. Faça login
+3. Toque no botão **Compartilhar** (quadrado com seta para cima)
+4. Role e toque em **"Adicionar à Tela de Início"**
+5. Toque em **Adicionar** — ícone aparece na tela inicial
+
+### No Desktop (Chrome/Edge)
+1. Abra a URL e faça login
+2. Clique no ícone de **instalar** na barra de endereço (à direita)
+3. Ou clique no menu → **"Instalar EstudaAí..."**
+4. O app abre em janela própria, como um programa
+
+### O que você ganha instalando
+- ✅ **Ícone na tela inicial** — acesso rápido como um app
+- ✅ **Tela cheia** — sem barra do navegador
+- ✅ **Funciona offline** — dados já carregados ficam disponíveis sem internet
+- ✅ **Atalhos** (Android): pressione longamente o ícone para ver Calendário,
+  Nova tarefa e Pomodoro
+- ✅ **Notificações** — lembretes funcionam mesmo com o app em background
+
+> 💡 As atualizações do app aparecem automaticamente — você não precisa
+> "atualizar" nada, é só abrir e usar.
+
+
+---
+
+## 🔐 Login com Google (OPCIONAL)
+
+Seu app já funciona com login por e-mail + senha. Mas você pode **adicionar
+"Entrar com Google"** para deixar o acesso mais fácil (o usuário não precisa
+decorar senha).
+
+### Passo 1 — Criar projeto no Google Cloud Console
+
+1. Acesse **https://console.cloud.google.com**
+2. Faça login com sua conta Google
+3. No topo, clique no seletor de projeto → **"Novo projeto"**
+4. Nome: `estudaai` → **Criar**
+5. Aguarde ~30s, depois selecione o projeto
+
+### Passo 2 — Configurar a tela de consentimento
+
+1. No menu lateral esquerdo: **APIs & Services → OAuth consent screen**
+2. Escolha **External** (se perguntar) → **Criar**
+3. Preencha:
+   - **App name**: `EstudaAí`
+   - **User support email**: seu e-mail
+   - **Developer contact**: seu e-mail
+4. **Salvar e continuar**
+5. **Scopes**: clique "Add or Remove Scopes" → marque:
+   - `userinfo.email` (e-mail)
+   - `userinfo.profile` (nome)
+   - **Salvar e continuar**
+6. **Test users**: adicione seu e-mail → **Salvar e continuar**
+
+### Passo 3 — Criar credenciais OAuth
+
+1. No menu lateral: **APIs & Services → Credentials**
+2. **+ Create Credentials → OAuth client ID**
+3. **Application type**: `Web application`
+4. **Name**: `EstudaAí Web`
+5. **Authorized redirect URIs** — adicione DUAS URLs:
+   - `http://localhost:3000/api/auth/callback/google` (para dev)
+   - `https://SUA-URL-NA-VERCEL.vercel.app/api/auth/callback/google` (produção)
+6. **Criar**
+7. Vai aparecer um popup com **Client ID** e **Client Secret** — **copie os dois**
+
+### Passo 4 — Adicionar variáveis na Vercel
+
+1. Vá na Vercel: seu projeto → **Settings → Environment Variables**
+2. Adicione:
+   - **Key**: `GOOGLE_CLIENT_ID` → **Value**: cole o Client ID
+   - **Key**: `GOOGLE_CLIENT_SECRET` → **Value**: cole o Client Secret
+3. **Deployments → "..." → Redeploy** (para aplicar)
+
+### Passo 5 — Testar
+
+1. Acesse sua URL do app
+2. Na tela de login, vai aparecer **"Entrar com Google"** no topo
+3. Clique → autorize → pronto! 🎉
+
+> 💡 Se o usuário nunca logou com senha, o login Google **cria a conta
+> automaticamente** na primeira vez. Se já tem conta com o mesmo e-mail, ele
+> entra na conta existente (dados são unificados por e-mail).
+
+> ⚠️ **Importante:** se você não configurar o Google, o botão aparece mas não
+> funciona (não redireciona). O login por senha continua 100% funcional.
+
 **Precisa de ajuda com algum passo específico?** Me diga qual etapa travou e
 eu te ajudo a destravar! 👍
